@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn compile *)",
+      "Bash(./mvnw compile *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(Test-Path *)",
+      "Bash(where mvn *)",
+      "Read(//c/Users/27303/AppData/Local/Programs//**)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Java\\\\jdk-21\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; cd \"C:\\\\Users\\\\27303\\\\IdeaProjects\\\\Community\"; & \"C:\\\\Program Files\\\\Java\\\\jdk-21\\\\bin\\\\javac.exe\" --version 2>&1)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-21.0.10\" \"/c/Program Files/JetBrains/IntelliJ IDEA 2025.3.2/plugins/maven/lib/maven3/bin/mvn.cmd\" compile -f /c/Users/27303/IdeaProjects/Community/pom.xml -q)",
+      "WebSearch",
+      "WebFetch(domain:www.alibabacloud.com)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\27303\\\\IdeaProjects\\\\Craving\\\\src\\\\main\\\\java\\\\com\\\\example\\\\community\\\\config\\\\RecommendAsyncConfig.java\" -Force)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\27303\\\\IdeaProjects\\\\Craving\\\\src\\\\main\\\\java\\\\com\\\\example\\\\community\\\\config\\\\EsIndexInitializer.java\" -Force)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\27303\\\\IdeaProjects\\\\Craving\\\\src\\\\main\\\\java\\\\com\\\\example\\\\community\\\\dto\\\\RecConfig.java\" -Force)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\27303\\\\IdeaProjects\\\\Craving\\\\src\\\\main\\\\java\\\\com\\\\example\\\\community\\\\entity\\\\UserBehavior.java\" -Force)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\27303\\\\IdeaProjects\\\\Craving\\\\src\\\\main\\\\java\\\\com\\\\example\\\\community\\\\entity\\\\ArticleExposurePool.java\" -Force)",
+      "Bash(python *)",
+      "Bash(pip list *)",
+      "Bash(findstr -i \"pdf\")",
+      "Bash(where python *)",
+      "Bash(where python3 *)",
+      "Bash(py --version)",
+      "Bash(mkdir -p C:/Users/27303/IdeaProjects/Craving/src/test/resources)",
+      "Bash(cp C:/Users/27303/IdeaProjects/Craving/img.png C:/Users/27303/IdeaProjects/Craving/src/test/resources/test_image.png)",
+      "Bash(javap *)",
+      "Bash(mvn test *)",
+      "PowerShell(Get-Item *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\27303\\\\IdeaProjects\\\\Craving\\\\src\\\\main\\\\resources\" -Recurse)",
+      "Bash(Select-Object FullName)",
+      "Bash(pip install *)",
+      "PowerShell(python --version; python -c \"import docx; print\\('python-docx ok'\\)\" 2>&1)"
+    ]
+  }
+}

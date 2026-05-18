@@ -1,0 +1,12 @@
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (1, 9, 8, 3, null, '2026-05-12 19:48:10');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (2, 25, 15, 2, 15, '2026-05-12 20:07:52');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (3, 25, 15, 6, null, '2026-05-12 20:07:52');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (4, 42, 24, 3, null, '2026-05-12 20:15:00');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (5, 43, 26, 2, 15, '2026-05-12 20:15:01');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (6, 43, 26, 6, null, '2026-05-12 20:15:01');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (7, 58, 32, 3, null, '2026-05-12 20:18:36');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (8, 59, 34, 2, 15, '2026-05-12 20:18:38');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (9, 59, 34, 6, null, '2026-05-12 20:18:38');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (10, 78, 40, 3, null, '2026-05-12 20:21:10');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (11, 79, 42, 2, 15, '2026-05-12 20:21:10');
+INSERT INTO community_db.user_behavior (id, user_id, article_id, event_type, dwell_time, created_at) VALUES (12, 79, 42, 6, null, '2026-05-12 20:21:10');

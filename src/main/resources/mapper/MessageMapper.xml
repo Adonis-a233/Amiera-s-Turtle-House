@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.community.im.mapper.MessageMapper">
+
+    <resultMap id="msgVOMap" type="com.example.community.im.vo.MessageVO">
+        <id     property="id"             column="id"/>
+        <result property="conversationId" column="conversation_id"/>
+        <result property="senderId"       column="sender_id"/>
+        <result property="senderName"     column="sender_name"/>
+        <result property="senderAvatar"   column="sender_avatar"/>
+        <result property="type"           column="type"/>
+        <result property="content"        column="content"/>
+        <result property="imageUrl"       column="image_url"/>
+        <result property="sendTime"       column="send_time"/>
+        <result property="recalled"       column="recalled"/>
+        <result property="seq"            column="seq"/>
+    </resultMap>
+
+    <!-- 批量插入，INSERT IGNORE 防重，<foreach> 拼 VALUES -->
+    <insert id="batchInsert">
+        INSERT IGNORE INTO im_message
+            (conversation_id, sender_id, type, content, image_url, send_time, is_recalled, client_msg_id, seq)
+        VALUES
+        <foreach collection="list" item="m" separator=",">
+            (#{m.conversationId}, #{m.senderId}, #{m.type}, #{m.content},
+             #{m.imageUrl}, #{m.sendTime}, #{m.recalled}, #{m.clientMsgId}, #{m.seq})
+        </foreach>
+    </insert>
+
+    <!--
+        游标分页：beforeSeq 传入时加 seq < 条件；为 null 则不加，取最新一页
+    -->
+    <select id="selectHistory" resultMap="msgVOMap">
+        SELECT
+            m.id, m.conversation_id, m.sender_id,
+            u.username  AS sender_name,
+            u.avatar    AS sender_avatar,
+            m.type, m.content, m.image_url, m.send_time, m.seq,
+            m.is_recalled AS recalled
+        FROM im_message m
+        JOIN sys_user u ON u.id = m.sender_id
+        WHERE m.conversation_id = #{conversationId}
+        <if test="beforeSeq != null">
+            AND m.seq &lt; #{beforeSeq}
+        </if>
+        ORDER BY m.seq DESC
+        LIMIT #{limit}
+    </select>
+
+    <!--
+        补发未读消息（P1-6）：用 seq 作游标，seq 在消息入 MQ 前分配，
+        严格反映发送顺序，不受异步落库 id 分配时序影响。
+    -->
+    <select id="selectUnreadSince" resultType="com.example.community.im.entity.ImMessage">
+        SELECT * FROM im_message
+        WHERE conversation_id = #{conversationId}
+          AND seq > #{sinceSeq}
+          AND is_recalled = 0
+        ORDER BY seq ASC
+        LIMIT 200
+    </select>
+
+    <!--
+        撤回消息：仅限本人、2 分钟内发送的消息
+        返回 affected rows（0=失败，1=成功）
+    -->
+    <update id="recallMessage">
+        UPDATE im_message
+        SET is_recalled = 1
+        WHERE id        = #{messageId}
+          AND sender_id = #{senderId}
+          AND send_time > DATE_SUB(NOW(), INTERVAL 120 SECOND)
+    </update>
+
+    <!-- 返回会话最新消息的 seq（P1-6），用于写入 read cursor -->
+    <select id="selectLatestSeq" resultType="long">
+        SELECT COALESCE(MAX(seq), 0) FROM im_message
+        WHERE conversation_id = #{conversationId}
+    </select>
+
+    <!-- 返回会话 seq 最大值（P2-4），用于 Redis seq 计数器冷启动 -->
+    <select id="selectMaxSeq" resultType="long">
+        SELECT COALESCE(MAX(seq), 0) FROM im_message
+        WHERE conversation_id = #{conversationId}
+    </select>
+
+</mapper>

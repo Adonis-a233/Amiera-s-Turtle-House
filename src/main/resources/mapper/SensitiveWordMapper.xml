@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.community.im.mapper.SensitiveWordMapper">
+
+    <select id="selectAllWords" resultType="string">
+        SELECT word FROM sensitive_word
+    </select>
+
+    <select id="selectWordsPaged" resultType="string">
+        SELECT word FROM sensitive_word
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countWords" resultType="long">
+        SELECT COUNT(*) FROM sensitive_word
+    </select>
+
+    <insert id="insertWord">
+        INSERT IGNORE INTO sensitive_word(word) VALUES(#{word})
+    </insert>
+
+    <delete id="deleteWord">
+        DELETE FROM sensitive_word WHERE word = #{word}
+    </delete>
+
+</mapper>

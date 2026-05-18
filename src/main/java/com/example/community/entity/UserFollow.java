@@ -1,0 +1,13 @@
+package com.example.community.entity;
+
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+public class UserFollow {
+
+    private Long id;
+    private Long followerId;
+    private Long followeeId;
+    private LocalDateTime createTime;
+}

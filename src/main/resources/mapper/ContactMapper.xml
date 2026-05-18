@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.community.mapper.ContactMapper">
+
+    <insert id="follow">
+        INSERT IGNORE INTO user_follow (follower_id, followee_id, create_time)
+        VALUES (#{followerId}, #{followeeId}, NOW())
+    </insert>
+
+    <delete id="unfollow">
+        DELETE FROM user_follow
+        WHERE follower_id = #{followerId}
+          AND followee_id = #{followeeId}
+    </delete>
+
+    <select id="isFollowing" resultType="boolean">
+        SELECT COUNT(1) > 0
+        FROM user_follow
+        WHERE follower_id = #{followerId}
+          AND followee_id = #{followeeId}
+    </select>
+
+    <insert id="block">
+        INSERT IGNORE INTO user_block (blocker_id, blocked_id, create_time)
+        VALUES (#{blockerId}, #{blockedId}, NOW())
+    </insert>
+
+    <delete id="unblock">
+        DELETE FROM user_block
+        WHERE blocker_id = #{blockerId}
+          AND blocked_id = #{blockedId}
+    </delete>
+
+    <select id="isBlocked" resultType="boolean">
+        SELECT COUNT(1) > 0
+        FROM user_block
+        WHERE (blocker_id = #{userA} AND blocked_id = #{userB})
+           OR (blocker_id = #{userB} AND blocked_id = #{userA})
+    </select>
+
+    <!--
+        单次查询判断双向关注：先确认 A→B 存在，再用 EXISTS 确认 B→A 存在。
+        两个方向都走 (follower_id, followee_id) 联合索引，点查 O(1)，
+        无论关注表有多少行都不扫全表。
+    -->
+    <select id="isMutualFollow" resultType="boolean">
+        SELECT COUNT(1) > 0
+        FROM user_follow f1
+        WHERE f1.follower_id = #{userA}
+          AND f1.followee_id = #{userB}
+          AND EXISTS (
+              SELECT 1 FROM user_follow f2
+              WHERE f2.follower_id = #{userB}
+                AND f2.followee_id = #{userA}
+          )
+    </select>
+
+    <resultMap id="contactVOMap" type="com.example.community.vo.ContactVO">
+        <id     property="id"       column="id"/>
+        <result property="username" column="username"/>
+        <result property="avatar"   column="avatar"/>
+        <result property="bio"      column="bio"/>
+    </resultMap>
+
+    <select id="selectFriends" resultMap="contactVOMap">
+        SELECT u.id, u.username, u.avatar, u.bio
+        FROM sys_user u
+        WHERE EXISTS (
+            SELECT 1 FROM user_follow f1
+            WHERE f1.follower_id = #{userId} AND f1.followee_id = u.id
+        )
+          AND EXISTS (
+            SELECT 1 FROM user_follow f2
+            WHERE f2.follower_id = u.id AND f2.followee_id = #{userId}
+        )
+          AND NOT EXISTS (
+            SELECT 1 FROM user_block b
+            WHERE (b.blocker_id = #{userId} AND b.blocked_id = u.id)
+               OR (b.blocker_id = u.id   AND b.blocked_id = #{userId})
+        )
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <select id="countFriends" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_user u
+        WHERE EXISTS (
+            SELECT 1 FROM user_follow f1
+            WHERE f1.follower_id = #{userId} AND f1.followee_id = u.id
+        )
+          AND EXISTS (
+            SELECT 1 FROM user_follow f2
+            WHERE f2.follower_id = u.id AND f2.followee_id = #{userId}
+        )
+          AND NOT EXISTS (
+            SELECT 1 FROM user_block b
+            WHERE (b.blocker_id = #{userId} AND b.blocked_id = u.id)
+               OR (b.blocker_id = u.id   AND b.blocked_id = #{userId})
+        )
+    </select>
+
+    <update id="updateFollowingCount">
+        UPDATE sys_user
+        SET following_count = following_count + #{delta}
+        WHERE id = #{userId}
+          AND following_count + #{delta} >= 0
+    </update>
+
+    <update id="updateFollowerCount">
+        UPDATE sys_user
+        SET follower_count = follower_count + #{delta}
+        WHERE id = #{userId}
+          AND follower_count + #{delta} >= 0
+    </update>
+
+</mapper>

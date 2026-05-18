@@ -1,0 +1,17 @@
+# 敏感配置 - 绝不提交
+.env
+
+# 编译产物
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# 日志
+*.log
+logs/
+
+# 上传文件
+uploads/

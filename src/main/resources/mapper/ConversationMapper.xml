@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.community.im.mapper.ConversationMapper">
+
+    <resultMap id="convMap" type="com.example.community.im.entity.ImConversation">
+        <id     property="id"           column="id"/>
+        <result property="type"         column="type"/>
+        <result property="participantA" column="participant_a"/>
+        <result property="participantB" column="participant_b"/>
+        <result property="groupName"    column="group_name"/>
+        <result property="groupAvatar"  column="group_avatar"/>
+        <result property="ownerId"      column="owner_id"/>
+        <result property="secretKey"    column="secret_key"/>
+        <result property="lastMsg"      column="last_msg"/>
+        <result property="lastMsgTime"  column="last_msg_time"/>
+        <result property="lastMsgType"  column="last_msg_type"/>
+        <result property="createTime"   column="create_time"/>
+    </resultMap>
+
+    <resultMap id="convVOMap" type="com.example.community.im.vo.ConversationVO">
+        <id     property="id"          column="id"/>
+        <result property="type"        column="type"/>
+        <result property="name"        column="name"/>
+        <result property="avatar"      column="avatar"/>
+        <result property="lastMsg"     column="last_msg"/>
+        <result property="lastMsgTime" column="last_msg_time"/>
+        <result property="lastMsgType" column="last_msg_type"/>
+        <result property="unreadCount" column="unread_count"/>
+    </resultMap>
+
+    <select id="findSingleConversation" resultType="long">
+        SELECT id FROM im_conversation
+        WHERE type = 1
+          AND participant_a = LEAST(#{userA}, #{userB})
+          AND participant_b = GREATEST(#{userA}, #{userB})
+        LIMIT 1
+    </select>
+
+    <insert id="createSingleConversation">
+        INSERT IGNORE INTO im_conversation (type, participant_a, participant_b, secret_key, create_time)
+        VALUES (1, LEAST(#{userA}, #{userB}), GREATEST(#{userA}, #{userB}), #{secretKey}, NOW())
+    </insert>
+
+    <insert id="createGroupConversation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO im_conversation (type, group_name, group_avatar, owner_id, secret_key, create_time)
+        VALUES (2, #{groupName}, #{groupAvatar}, #{ownerId}, #{secretKey}, NOW())
+    </insert>
+
+    <insert id="batchInsertGroupMembers">
+        INSERT INTO im_group_member (conversation_id, user_id, join_time) VALUES
+        <foreach collection="members" item="m" separator=",">
+            (#{m.conversationId}, #{m.userId}, NOW())
+        </foreach>
+    </insert>
+
+    <insert id="insertSingleGroupMember">
+        INSERT IGNORE INTO im_group_member (conversation_id, user_id, join_time)
+        VALUES (#{convId}, #{userId}, NOW())
+    </insert>
+
+    <update id="updateLastMsg">
+        UPDATE im_conversation
+        SET last_msg      = #{lastMsg},
+            last_msg_time = #{lastMsgTime},
+            last_msg_type = #{lastMsgType}
+        WHERE id = #{conversationId}
+    </update>
+
+    <!--
+        会话列表（P0-5 优化）：
+          unread_count 改由 Service 层从 Redis HASH 填充，此处固定返回 0，
+          消除了原来的 O(2N) 相关子查询，SQL 复杂度降为 O(1) 扫描。
+    -->
+    <select id="selectMyConversations" resultMap="convVOMap">
+        SELECT
+            c.id,
+            c.type,
+            CASE WHEN c.type = 1 THEN u.username ELSE c.group_name  END AS name,
+            CASE WHEN c.type = 1 THEN u.avatar   ELSE c.group_avatar END AS avatar,
+            c.last_msg,
+            c.last_msg_time,
+            c.last_msg_type,
+            0 AS unread_count
+        FROM im_conversation c
+        LEFT JOIN sys_user u
+            ON c.type = 1
+           AND u.id = CASE WHEN c.participant_a = #{userId}
+                           THEN c.participant_b
+                           ELSE c.participant_a END
+        WHERE (
+            (c.type = 1 AND (c.participant_a = #{userId} OR c.participant_b = #{userId}))
+            OR
+            (c.type = 2 AND EXISTS (
+                SELECT 1 FROM im_group_member gm
+                WHERE gm.conversation_id = c.id AND gm.user_id = #{userId}
+            ))
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM user_block b
+            WHERE c.type = 1
+              AND (
+                  (b.blocker_id = #{userId}
+                   AND b.blocked_id = CASE WHEN c.participant_a = #{userId}
+                                           THEN c.participant_b ELSE c.participant_a END)
+                  OR
+                  (b.blocked_id = #{userId}
+                   AND b.blocker_id = CASE WHEN c.participant_a = #{userId}
+                                           THEN c.participant_b ELSE c.participant_a END)
+              )
+        )
+        ORDER BY c.last_msg_time DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 会话总数（P0-3：修复 total 写死 list.size() 的 bug） -->
+    <select id="countMyConversations" resultType="long">
+        SELECT COUNT(*) FROM im_conversation c
+        WHERE (
+            (c.type = 1 AND (c.participant_a = #{userId} OR c.participant_b = #{userId}))
+            OR
+            (c.type = 2 AND EXISTS (
+                SELECT 1 FROM im_group_member gm
+                WHERE gm.conversation_id = c.id AND gm.user_id = #{userId}
+            ))
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM user_block b
+            WHERE c.type = 1
+              AND (
+                  (b.blocker_id = #{userId}
+                   AND b.blocked_id = CASE WHEN c.participant_a = #{userId}
+                                           THEN c.participant_b ELSE c.participant_a END)
+                  OR
+                  (b.blocked_id = #{userId}
+                   AND b.blocker_id = CASE WHEN c.participant_a = #{userId}
+                                           THEN c.participant_b ELSE c.participant_a END)
+              )
+        )
+    </select>
+
+    <!--
+        冷启动批量计算未读数（P0-5 + P1-6）：
+          用 LEFT JOIN + seq 游标，替代原来的嵌套相关子查询。
+    -->
+    <select id="batchCountUnread" resultType="map">
+        SELECT m.conversation_id AS convId, COUNT(*) AS cnt
+        FROM im_message m
+        LEFT JOIN im_read_cursor rc
+            ON rc.conversation_id = m.conversation_id AND rc.user_id = #{userId}
+        WHERE m.conversation_id IN
+        <foreach collection="convIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND m.seq > COALESCE(rc.last_read_seq, 0)
+        AND m.sender_id != #{userId}
+        AND m.is_recalled = 0
+        GROUP BY m.conversation_id
+    </select>
+
+    <!-- P1-6：read cursor 改用 seq 存储，与 selectUnreadSince 的游标字段保持一致 -->
+    <insert id="upsertReadCursor">
+        INSERT INTO im_read_cursor (conversation_id, user_id, last_read_seq, update_time)
+        VALUES (#{conversationId}, #{userId}, #{lastReadSeq}, NOW())
+        ON DUPLICATE KEY UPDATE
+            last_read_seq = GREATEST(last_read_seq, #{lastReadSeq}),
+            update_time   = NOW()
+    </insert>
+
+    <select id="findById" resultMap="convMap">
+        SELECT * FROM im_conversation WHERE id = #{convId}
+    </select>
+
+    <select id="findGroupMemberIds" resultType="long">
+        SELECT user_id FROM im_group_member WHERE conversation_id = #{convId}
+    </select>
+
+    <select id="selectSecretKey" resultType="string">
+        SELECT secret_key FROM im_conversation WHERE id = #{convId}
+    </select>
+
+    <!-- 单个会话的未读数（P1-6：改用 seq 游标） -->
+    <select id="countUnread" resultType="long">
+        SELECT COUNT(*) FROM im_message
+        WHERE conversation_id = #{conversationId}
+          AND seq > COALESCE(
+              (SELECT last_read_seq FROM im_read_cursor
+               WHERE conversation_id = #{conversationId} AND user_id = #{userId}),
+              0)
+          AND sender_id != #{userId}
+          AND is_recalled = 0
+    </select>
+
+    <select id="findMyConversations" resultMap="convMap">
+        SELECT * FROM im_conversation
+        WHERE participant_a = #{userId} OR participant_b = #{userId}
+        UNION
+        SELECT c.* FROM im_conversation c
+        JOIN im_group_member gm ON gm.conversation_id = c.id
+        WHERE gm.user_id = #{userId}
+    </select>
+
+    <select id="getLastReadSeq" resultType="java.lang.Long">
+        SELECT last_read_seq FROM im_read_cursor
+        WHERE conversation_id = #{convId} AND user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <!-- 当前用户所有会话的总未读数（P1-6：改用 seq 游标） -->
+    <select id="countTotalUnread" resultType="long">
+        SELECT COALESCE(SUM(unread), 0) FROM (
+            SELECT COUNT(*) AS unread
+            FROM im_message m
+            LEFT JOIN im_read_cursor rc
+                ON rc.conversation_id = m.conversation_id AND rc.user_id = #{userId}
+            WHERE m.sender_id != #{userId}
+              AND m.is_recalled = 0
+              AND m.seq > COALESCE(rc.last_read_seq, 0)
+              AND (
+                  EXISTS (SELECT 1 FROM im_conversation c
+                          WHERE c.id = m.conversation_id
+                            AND (c.participant_a = #{userId} OR c.participant_b = #{userId}))
+                  OR EXISTS (SELECT 1 FROM im_group_member gm
+                             WHERE gm.conversation_id = m.conversation_id AND gm.user_id = #{userId})
+              )
+            GROUP BY m.conversation_id
+        ) t
+    </select>
+
+</mapper>

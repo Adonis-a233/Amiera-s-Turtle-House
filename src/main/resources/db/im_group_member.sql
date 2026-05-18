@@ -1,0 +1,12 @@
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (1, 1, 17, 1, '2026-05-12 19:48:13');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (2, 1, 18, 1, '2026-05-12 19:48:13');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (3, 1, 20, 1, '2026-05-12 19:48:13');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (4, 2, 51, 1, '2026-05-12 20:15:04');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (5, 2, 52, 1, '2026-05-12 20:15:04');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (6, 2, 54, 1, '2026-05-12 20:15:05');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (7, 3, 67, 1, '2026-05-12 20:18:41');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (8, 3, 68, 1, '2026-05-12 20:18:41');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (9, 3, 70, 1, '2026-05-12 20:18:42');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (10, 4, 87, 1, '2026-05-12 20:21:13');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (11, 4, 88, 1, '2026-05-12 20:21:13');
+INSERT INTO community_db.im_group_member (id, conversation_id, user_id, role, join_time) VALUES (12, 4, 90, 1, '2026-05-12 20:21:13');

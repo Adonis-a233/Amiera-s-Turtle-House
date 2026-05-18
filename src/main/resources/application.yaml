@@ -1,0 +1,128 @@
+spring:
+  application:
+    name: community
+
+  threads:
+    virtual:
+      enabled: true   # Java 21 虚拟线程：Tomcat 工作线程改为虚拟线程，阻塞 IO 时挂起而非占用平台线程
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/community_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 5000ms
+
+  elasticsearch:
+    uris: http://localhost:9200
+
+  jackson:
+    time-zone: GMT+8
+    date-format: yyyy-MM-dd HH:mm:ss
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 2MB
+      max-request-size: 5MB
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: craving
+    password: yourpassword
+    virtual-host: /
+    listener:
+      simple:
+        acknowledge-mode: manual   # 手动 ACK，防止消费失败丢消息
+        prefetch: 10               # 每次预取10条，批量消费
+
+# JWT配置
+jwt:
+  secret: ${JWT_SECRET}
+
+# 文件上传配置
+# 注意：服务器启动时通过命令行参数覆盖这两项，保证路径正确：
+#   --file.upload-dir=/root/uploads/avatars
+#   --file.access-prefix=http://115.29.214.88:8080/uploads/avatars
+file:
+  upload-dir: uploads/avatars
+  access-prefix: http://localhost:8080/uploads/avatars
+
+mybatis-plus:
+  configuration:
+    # [修复] 原配置 log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # 会将每一条SQL语句及参数打印到标准输出（stdout），在服务器上会写入app.log。
+    # 1核2G的服务器长期运行后，大量SQL日志会迅速填满磁盘（尤其列表接口频繁调用时）。
+    # 本地开发调试时可以开启，生产环境注释掉或删除此行。
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      id-type: auto
+  mapper-locations: classpath:mapper/*.xml
+
+# Mimo LLM 服务（优先使用；并发占满时降级到 DashScope qwen）
+mimo:
+  base-url: https://token-plan-cn.xiaomimimo.com/v1
+  api-key: ${MIMO_API_KEY}
+  model: mimo-v2.5
+  max-concurrency: 8   # 并发 slot 耗尽时触发降级
+
+# DashScope 云端模型服务（qwen3-vl-embedding + qwen3.6-flash）
+dashscope:
+  api-key: ${DASHSCOPE_API_KEY}
+  llm-model: qwen3.6-flash-2026-04-16
+  embedding:
+    model: qwen3-vl-embedding
+    dimension: 1024   # 支持 256/512/768/1024/1536/2048/2560，默认2560，1024为性价比最优
+
+# Ollama 本地模型服务（保留配置，OllamaClient/OllamaEmbeddingService bean 仍存在但不再主动调用）
+ollama:
+  base-url: http://localhost:11434
+  embed-text-model: nomic-embed-text-v1.5
+  embed-vision-model: nomic-embed-vision-v1.5
+  chat-model: qwen2.5:7b
+  # 搜索模块专用（model tag 与 ollama list 输出保持一致）
+  models:
+    text-embed: nomic-embed-text:latest
+    vision-embed: nomic-embed-vision:latest
+    llm: qwen2.5:7b
+  food-classifier:
+    threshold: 0.30
+  query-expansion:
+    enabled: true
+
+# ES 搜索参数
+search:
+  knn:
+    k: 50
+    num-candidates: 100
+  rrf:
+    window-size: 100
+    rank-constant: 60
+  result-size: 10
+
+im:
+  kek: ${IM_KEK}
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+logging:
+  level:
+    # [修复] 原来 debug 级别会输出大量调试信息（方法调用、Bean注入等），
+    # 在服务器上日志文件会飞速增长。改为 info 只保留关键运行信息。
+    # 本地调试需要看详细日志时，可临时改回 debug。
+    com.example.community: info
