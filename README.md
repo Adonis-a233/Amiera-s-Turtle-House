@@ -6,7 +6,7 @@
 
 ## 一、项目概述
 
-Craving 是一个以美食为主题的内容社区平台，提供文章发布、评论互动、用户关注、收藏等基础社交功能，并在此之上构建了三个技术亮点子模块：
+Craving 是一个以美食为主题的内容社区平台，提供文章发布、评论互动、用户关注、收藏等基础社交功能，并在此之上构建了三个技术模块：
 
 | 模块            | 核心能力                                                     |
 | --------------- | ------------------------------------------------------------ |
@@ -22,7 +22,7 @@ Craving 是一个以美食为主题的内容社区平台，提供文章发布、
 
 ```
 客户端 (WebSocket)
-    │  JWT 握手鉴权
+    │  Ticket 换票鉴权（POST /api/im/ticket → 30s 一次性 ticket）
     ▼
 JwtHandshakeInterceptor
     │
@@ -97,9 +97,9 @@ return stringRedisTemplate.opsForValue().increment(seqKey);
 
 这样 DB 中存储的是 DEK 密文而非明文，即使 DB 泄露也无法直接解密消息历史，同时服务端仍能进行敏感词过滤（解密 → 过滤 → 重加密）。
 
-### 2.4 消息持久化 — 写扩散模型
+### 2.4 消息持久化 — 读扩散模型
 
-采用**写扩散**（单份存储）：每条消息在 `im_message` 表中只写一条记录，通过 `conversation_id` 关联。相比读扩散（每个接收者各存一份），写扩散在群聊场景下大幅节省存储，代价是查询时需 JOIN 或在应用层组装。
+采用**读扩散**（单份存储）：每条消息在 `im_message` 表中只写一条记录，通过 `conversation_id` 关联。相比写扩散（每个接收者各存一份），读扩散在群聊场景下大幅节省存储，代价是查询时需 JOIN 或在应用层组装。
 
 **Redis + MySQL 双层存储**：
 
@@ -254,16 +254,16 @@ DIN 近似打分
 **解决方案**：
 
 - 改用自定义 `x-retry-count` header，重发时在应用层自增并重新 publish
-- `buffer.clear()` 前先 copy 到局部变量，ACK 之后再清理（现有实现已采用 `new ArrayList<>(buffer)` 拷贝）
+- 由于使用手动 ACK 模式，JVM 崩溃后 RabbitMQ 会对未 ACK 消息重新投递；`INSERT IGNORE` 保证重复投递不产生重复记录，形成完整的可靠性闭环。
 - 超过最大重试次数（3次）后路由进 DLQ，人工排查
 
 ---
 
-#### P0-5：会话列表 SQL O(2N) 相关子查询（待优化）
+#### P0-5：会话列表 SQL O(2N) 相关子查询（已修复）
 
 **问题**：`ConversationMapper.xml` 查询会话列表时，每行用相关子查询计算未读数，N=50 个会话产生 100 次索引扫描，随会话数线性增长。
 
-**解决方案**：将未读数改为 Redis `HGETALL im:unread:{userId}` 批量读取，彻底消除 SQL 子查询；或改写为 LEFT JOIN `im_read_cursor` 聚合，从 O(2N) 子查询降为单次扫描。
+**解决方案**：SQL 层 `unread_count` 固定返回 `0 AS unread_count`，Service 层 `fillUnreadCounts()` 用 `HMGET im:unread:{userId}` 批量读取 Redis HASH，一次网络往返拿到所有会话未读数；Redis 未命中（冷启动/重启）时执行 `batchCountUnread` 批量补查并回写 Redis，彻底消除 O(2N) 相关子查询。
 
 ---
 
@@ -283,19 +283,19 @@ IV 管理本身正确（随机生成，随密文一起存储），需能解释�
 
 ---
 
-#### P1-3：`followingCount` 并发竞态（TOCTOU）
+#### P1-3：`followingCount` 并发竞态（TOCTOU）（已修复）
 
-**问题**：`ContactServiceImpl` 先查后写（check-then-act），并发关注请求可能绕过计数检查，导致 `followingCount` 被多加。
+**问题**：原始设计先查后写（check-then-act），并发关注请求可能绕过计数检查，导致 `followingCount` 被多加。
 
-**解决方案**：改为数据库原子操作（`UPDATE ... SET following_count = following_count + 1 WHERE id = ? AND following_count < limit`）或加分布式锁。
+**解决方案**：改用 `INSERT IGNORE` 写入唯一约束的关注关系表；数据库保证只有一条并发请求能插入成功（返回1），其余返回0并直接抛出"已关注"，彻底消除 TOCTOU 窗口。计数递增使用 `UPDATE ... SET following_count = following_count + 1`（数据库原子操作），只在 INSERT 成功后执行。
 
 ---
 
-#### P1-4：Token 在 WebSocket URL 中传输
+#### P1-4：Token 在 WebSocket URL 中传输（已修复）
 
-**问题**：`JwtHandshakeInterceptor` 从 URL 参数读取 Token，Token 会出现在 Nginx access log、浏览器历史、Referer 头中，存在泄露风险。
+**问题**：若直接将 JWT 放 URL 参数，Token 会出现在 Nginx access log、浏览器历史、Referer 头中，存在泄露风险。
 
-**解决方案**：握手完成后通过首条 WebSocket 消息传递 Token 进行二次鉴权，或使用 `Sec-WebSocket-Protocol` 子协议头传递（浏览器 `WebSocket` API 支持该 header）。
+**解决方案**：实现 Ticket 换票机制。客户端先用正常 JWT 调用 `POST /api/im/ticket`，换取30秒有效的一次性随机 UUID ticket，WebSocket 连接时携带 `?ticket=xxx`。`JwtHandshakeInterceptor` 用 Redis `GETDEL` 原子消费 ticket（消费即失效，防重放），ticket 是随机 UUID，即使出现在日志中也无法还原用户身份。
 
 ---
 
@@ -307,11 +307,11 @@ IV 管理本身正确（随机生成，随密文一起存储），需能解释�
 
 ---
 
-#### P1-6：已读游标用 DB 自增 `id` 而非 `seq`
+#### P1-6：已读游标用 DB 自增 `id` 而非 `seq`（已修复）
 
-**问题**：`im_read_cursor` 记录 `last_read_id`（DB 自增主键），批量插入时 id 分配顺序可能与消息到达顺序不一致，导致已读位置语义混乱。
+**问题**：若用 DB 自增 `id` 做已读游标，批量插入时 id 分配顺序可能与消息到达顺序不一致，导致已读位置语义混乱。
 
-**解决方案**：改用业务 `seq` 作为已读游标（`last_read_seq`），seq 由 Redis 单调递增保证顺序语义，与消息时序完全对齐。
+**解决方案**：`im_read_cursor` 表已改用 `last_read_seq` 字段，`upsertReadCursor` 写入业务 seq，`batchCountUnread`、`countUnread`、`countTotalUnread` 均以 `seq > last_read_seq` 作为未读判断条件，与 Redis 单调递增的 seq 完全对齐。
 
 ---
 
@@ -352,11 +352,11 @@ IV 管理本身正确（随机生成，随密文一起存储），需能解释�
 
 ---
 
-#### P2-3：历史记录越权读取（已知风险）
+#### P2-3：历史记录越权读取（已修复）
 
-**问题**：`ConversationServiceImpl` 查历史记录未校验调用者是否是该会话成员，理论上可构造请求读取任意会话消息。
+**问题**：若查历史记录未校验调用者是否是该会话成员，理论上可构造请求读取任意会话消息。
 
-**解决方案**：查询前校验 `SELECT 1 FROM im_conversation_member WHERE conv_id=? AND user_id=?`，或在 SQL 层加 `AND (participant_a=? OR participant_b=?)` 条件。
+**解决方案**：`ConversationServiceImpl.getHistory()` 已在查询前调用 `isMember(conversationId, userId)` 进行鉴权：单聊检查 `participant_a/b`，群聊查 `im_group_member` 表，不在会话中则直接抛出"无权限访问该会话"异常。
 
 ---
 
